@@ -1,0 +1,32 @@
+name: Sync MU Squad Daily
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Otomatis jalan setiap hari Minggu jam 00:00 UTC
+  workflow_dispatch:    # Tombol manual agar bisa diklik kapan saja
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests python-dotenv
+
+      - name: Run Sync Script
+        env:
+          # Ini menghubungkan Secrets GitHub ke script Python kamu
+          FB_DATA_TOKEN: ${{ secrets.FB_DATA_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python sync_squad.py
