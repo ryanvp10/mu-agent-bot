@@ -2,7 +2,7 @@ name: MU News Bot (Every Hour)
 
 on:
   schedule:
-    - cron: '0 * * * *' # Jalan setiap jam tepat
+    - cron: '0 0 * * *' # Jalan setiap jam tepat
   workflow_dispatch:
 
 jobs:
