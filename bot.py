@@ -8,6 +8,7 @@ from telebot import types
 from supabase import create_client, Client
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from urllib.parse import urlparse
+import datetime
 
 load_dotenv()
 
@@ -272,6 +273,82 @@ def transfer_talk(message):
                 
     if not found:
         bot.reply_to(message, "Belum ada rumor transfer panas hari ini. Pantau terus! 🔴")
+
+
+import datetime
+
+@bot.message_handler(commands=['table'])
+def get_league_table(message):
+    bot.send_chat_action(message.chat.id, 'typing')
+    
+    # --- 1. CEK CACHE DI SUPABASE ---
+    try:
+        # Ambil data terbaru dari tabel cache
+        cache_res = supabase.table("league_cache").select("*").order("updated_at", desc=True).limit(1).execute()
+        
+        use_cache = False
+        if cache_res.data:
+            last_update = datetime.datetime.fromisoformat(cache_res.data[0]['updated_at'].replace('Z', '+00:00'))
+            now = datetime.datetime.now(datetime.timezone.utc)
+            
+            # Jika data kurang dari 6 jam, gunakan cache
+            if (now - last_update).total_seconds() < 21600: # 6 jam = 21600 detik
+                standings = cache_res.data[0]['data']
+                use_cache = True
+                print("📦 Menggunakan data dari Cache Supabase")
+
+        # --- 2. JIKA CACHE KOSONG/LAMA, AMBIL DARI API ---
+        if not use_cache:
+            print("🌐 Mengambil data dari Football-Data API...")
+            url = "https://api.football-data.org/v4/competitions/PL/standings"
+            headers = {"X-Auth-Token": os.getenv("FB_DATA_TOKEN")}
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                standings = data['standings'][0]['table']
+                
+                # Simpan/Update Cache ke Supabase
+                # Kita gunakan ID 1 agar hanya ada satu baris cache yang terus di-update
+                supabase.table("league_cache").upsert({
+                    "id": 1, 
+                    "data": standings, 
+                    "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                }).execute()
+            else:
+                bot.reply_to(message, "Gagal mengambil data dari API pusat.")
+                return
+
+        # --- 3. FORMAT TAMPILAN TABEL ---
+        table_text = "🏆 *KLASEMEN PREMIER LEAGUE*\n\n"
+        table_text += "`Pos  Team          P   GD  Pts`\n"
+        table_text += "`------------------------------`\n"
+        
+        for team in standings:
+            pos = str(team['position']).ljust(4)
+            name = team['team']['shortName']
+            played = str(team['playedGames']).ljust(3)
+            gd = str(team['goalDifference']).ljust(4)
+            pts = str(team['points']).ljust(3)
+            
+            if team['team']['id'] == 66: # Manchester United
+                row = f"*{pos}{name.upper().ljust(14)}{played}{gd}{pts}* 🔴\n"
+            else:
+                row = f"`{pos}{name.ljust(14)}{played}{gd}{pts}`\n"
+            table_text += row
+            
+        table_text += "`------------------------------`"
+        if use_cache:
+            table_text += f"\n_🕒 Diperbarui pada: {last_update.strftime('%H:%M WIB')}_"
+
+        bot.reply_to(message, table_text, parse_mode="Markdown")
+        
+    except Exception as e:
+        print(f"❌ Error Table System: {e}")
+        bot.reply_to(message, "Terjadi kesalahan pada sistem klasemen.")
+
+
+
     
 # --- RUN ---
 if __name__ == "__main__":
